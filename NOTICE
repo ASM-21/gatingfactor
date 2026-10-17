@@ -1,0 +1,55 @@
+gatingfactor
+Copyright 2026 Andrew Morrissey
+
+This product includes software developed by Andrew Morrissey.
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+--------------------------------------------------------------------------
+THIRD-PARTY DATA REDISTRIBUTED IN THIS REPOSITORY
+--------------------------------------------------------------------------
+
+1. CarbonCast hourly grid carbon intensity and generation-by-fuel data
+   Files: data/raw/pjm/PJM_direct_emissions.csv
+          data/raw/pjm/PJM_lifecycle_emissions.csv
+          data/raw/pjm/PJM_2019_clean.csv
+   Source: https://github.com/carbonfirst/CarbonCast
+   License: Apache License 2.0
+   CarbonCast derives these series from U.S. Energy Information
+   Administration hourly electric grid monitor data.
+
+   Used by: carbon-aware-der (all carbon intensity and marginal
+   emissions results).
+
+2. Berkeley Lab "Queued Up" interconnection queue dataset (2025 release,
+   data through end of 2024)
+   File: data/raw/lbnl/LBNL_Ix_Queue_Data_File_thru2024_v2.xlsx
+   Source: Lawrence Berkeley National Laboratory,
+           https://emp.lbl.gov/queues
+   Berkeley Lab publishes this dataset publicly for research use. It is
+   redistributed here unmodified so the analysis is reproducible from a
+   clean clone. Berkeley Lab is the authoritative source; consult
+   emp.lbl.gov/queues for the current release and any use conditions.
+
+   emp.lbl.gov was not reachable from the environment this repository was
+   built in. The workbook was obtained from a third-party GitHub mirror.
+   The file is Berkeley Lab's own published workbook; no code from the
+   mirroring repository was used, and all analysis here is written
+   independently from the raw workbook. See
+   interconnection-analytics/README.md.
+
+   Used by: interconnection-analytics.
+
+3. PJM Interconnection queue snapshot
+   File: data/raw/pjm/pjm_queue_snapshot_2026-05-05.parquet
+   Source: PJM Interconnection serial service request queue,
+           https://www.pjm.com/planning/service-requests/services-request-status
+   A point-in-time export of PJM's public queue, obtained from the same
+   third-party mirror as item 2.
+
+   Used by: interconnection-analytics.
+
+--------------------------------------------------------------------------
+
+No data in this repository originates from any utility's internal,
+proprietary, or customer systems. See the disclaimer in README.md.

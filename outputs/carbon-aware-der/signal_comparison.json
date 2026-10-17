@@ -1,0 +1,19 @@
+{
+  "avg_mean_kg_per_mwh": 310.05170302684184,
+  "marginal_mean_kg_per_mwh": 430.4888606503343,
+  "marginal_over_average": 1.388442174152696,
+  "hourly_correlation": 0.03716296042792036,
+  "profile_correlation": -0.6584664616969246,
+  "avg_diurnal_swing_kg_per_mwh": 27.30784284208943,
+  "avg_diurnal_swing_pct": 8.807375384570022,
+  "marginal_diurnal_swing_kg_per_mwh": 155.98344778249447,
+  "marginal_diurnal_swing_pct": 36.23472842962656,
+  "signal_strength_ratio": 4.114134670938128,
+  "days": 364,
+  "helps_on_average": 362,
+  "hurts_on_marginal": 359,
+  "helps_avg_but_hurts_marginal": 359,
+  "pooled_mef_kg_per_mwh": 437.8351858695936,
+  "pooled_r2": 0.936533832823453,
+  "pooled_r2_uncontrolled": 0.878452170186573
+}

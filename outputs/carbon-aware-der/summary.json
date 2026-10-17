@@ -1,0 +1,10 @@
+{
+  "days": 364,
+  "unmanaged_cost": 2316.0655492867654,
+  "unmanaged_carbon_kg": 4662.691255631083,
+  "cost_opt_saving_pct": 33.98764794561238,
+  "cost_opt_carbon_change_pct": 0.024819789207050663,
+  "carbon_opt_saving_pct": 2.9433201258844828,
+  "carbon_opt_cost_change_pct": -22.126998840012583,
+  "implied_abatement_cost_per_kg": 1.9848983729855827
+}

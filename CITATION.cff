@@ -1,0 +1,45 @@
+cff-version: 1.2.0
+title: >-
+  gatingfactor: what actually gates distributed energy resource value
+message: >-
+  If you use this software or its findings, please cite it using the
+  metadata below.
+type: software
+authors:
+  - family-names: Morrissey
+    given-names: Andrew
+    orcid: "https://orcid.org/0009-0004-8758-2687"
+repository-code: "https://github.com/ASM-21/gatingfactor"
+url: "https://github.com/ASM-21/gatingfactor"
+abstract: >-
+  Four independent empirical studies of distributed energy resource value in
+  PJM and the wider US grid, converging on a single structural finding: what
+  gates a DER project is the context it sits in, not the sophistication of the
+  control layered on top. Track 1 shows the standard time-to-interconnect
+  statistic understates the real wait by up to 5.2x because it is conditioned
+  on success, using Kaplan-Meier survival analysis over 36,441 Berkeley Lab
+  Queued Up interconnection requests. Track 2 shows the FERC SGIP Fast Track
+  15%-of-peak-load screen binds 5.7x to 17.1x below the voltage and thermal
+  limit on synthetic distribution feeders modeled in pandapower. Track 3 shows
+  that at equal revenue within customer class, the same rooftop solar customer
+  is the best performer under time-of-use rates and the worst under a demand
+  charge, a 69 percentage point swing. Track 6 shows that optimizing battery
+  and EV dispatch against PJM's published average carbon intensity increases
+  marginal emissions on 359 of 364 days, because the average and marginal
+  signals are anti-correlated across the day.
+keywords:
+  - interconnection queue
+  - hosting capacity
+  - distributed energy resources
+  - marginal emissions
+  - carbon-aware scheduling
+  - electricity tariff design
+  - demand charge
+  - time-of-use rates
+  - PJM
+  - power systems
+  - survival analysis
+  - pandapower
+license: Apache-2.0
+version: 1.0.0
+date-released: "2026-10-17"

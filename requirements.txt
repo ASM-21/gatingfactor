@@ -1,0 +1,26 @@
+# Pinned to the versions the published findings were produced with.
+#
+# The pulp bound is load-bearing, not cosmetic: PuLP 4.0 is a rustcore
+# rewrite that removed LpVariable.dicts and PULP_CBC_CMD and ships no
+# bundled solver. Installing it silently breaks every MILP in
+# carbon-aware-der. See docs/REPRODUCING.md.
+
+# Core
+numpy>=1.26,<3
+pandas>=2.0,<3
+pyarrow>=14.0
+matplotlib>=3.8
+openpyxl>=3.1          # reads the LBNL Queued Up workbook
+
+# interconnection-analytics, hosting-capacity-sim
+pandapower>=3.0,<4
+numba>=0.59            # optional; large speedup on repeated power flow
+
+# carbon-aware-der
+pulp>=2.7,<4           # see note above
+
+# tariff-explorer dashboard
+streamlit>=1.30
+
+# dev
+pytest>=8.0
