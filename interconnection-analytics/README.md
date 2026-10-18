@@ -31,13 +31,15 @@ have tests pinning them.
 every duration calculation yields `NaN`, which looks like missing data rather
 than a parsing bug.
 
-**Outcome must come from status, not dates.** Only 27.8% of withdrawn projects
-carry a withdrawal date and only 8.1% of the dataset has a commercial operation
-date. Classifying outcomes from date presence would move roughly half of all
-withdrawn projects into a "still waiting" bucket and understate the withdrawal
-rate about twofold. Status is complete; dates are not. Rates therefore use
-every row, and timing statistics use the 62.8% subset where a terminal date
-exists.
+**Outcome must come from status, not dates.** Only 48.3% of withdrawn projects
+carry a withdrawal date, and only about half of operational projects carry a
+commercial operation date. Classifying outcomes from date presence would move
+roughly half of all withdrawn projects into a "still waiting" bucket and
+understate the withdrawal rate about twofold. Status is complete; dates are
+not. Rates therefore use every row, and timing statistics state the dated
+subset they rest on. (An earlier version of this README said 27.8% of withdrawn
+projects carry a date. That figure is the share of *all* rows with a withdrawal
+date, not of withdrawn ones; the conclusion it supported was unaffected.)
 
 A third, smaller quirk: 17 rows carry negative capacity. Those are capacity
 *decrease* requests, a real queue product, and they are flagged rather than
@@ -45,32 +47,63 @@ dropped so they cannot net silently into a total.
 
 ## The headline finding
 
-**The usual time-to-interconnect statistic understates the wait by up to 5x,
-and for recent cohorts the statistic does not exist at all.**
+**There is no median wait for a project entering the queue, and the median
+people quote instead describes the minority that finished.**
 
 Median time-to-interconnect is normally computed over projects that reached
-operation. That statistic is conditioned on success. A project that entered in 2015 and is
-still waiting contributes nothing, so when queues slow down, slow projects stay
-unfinished and leave the sample, and the measured median gets *faster*. The
-bias runs opposite to the trend it is meant to measure.
+operation. That statistic is conditioned on success. It is a fair description
+of the completers, but a developer entering the queue wants to know how long
+*their* project will wait, and in this dataset most projects never finish.
 
-Correcting with Kaplan-Meier, which lets every project contribute the time it
-was actually observed and right-censors the unresolved ones:
+| Cohort | Projects | Reached operation | Withdrew | Still open | Median of completers |
+|---|---|---|---|---|---|
+| 1995-99 | 258 | 34.1% | 61.6% | 4.3% | 3.75 yr |
+| 2000-04 | 1,720 | 27.2% | 71.2% | 1.7% | 2.31 yr |
+| 2005-09 | 4,422 | 21.6% | 76.6% | 1.8% | 2.87 yr |
+| 2010-14 | 4,441 | 22.2% | 75.8% | 2.0% | 3.44 yr |
+| 2015-19 | 8,927 | 13.8% | 67.3% | 18.9% | 3.87 yr |
+| 2020-24 | 15,862 | 1.6% | 41.5% | 56.9% | 2.56 yr |
 
-| Cohort | Projects | Naive median | Kaplan-Meier median | Completion rate |
+No cohort entering from 1995 through 2019 has had more than 34.1% of its
+requests reach operation, and none can reach half: if every project from those
+cohorts still waiting were to complete, the highest any of them could finish at
+is 38.4%. When more than half of a cohort never completes, the median time to
+completion for an entrant does not exist. The completed-only median still
+returns a comfortable-looking number, which is the problem. These shares come
+from status alone, which covers every row, so they rest on no assumption about
+missing dates.
+
+**Read before a cohort resolves, the completed-only median is also truncated.**
+A recent cohort has only had time to produce its fast completions; its slow ones
+are still in the queue. The size of that effect is measured directly by
+re-reading three fully resolved cohorts at earlier record end dates:
+
+| Cohort | Read at close of entry window | +1 yr | +5 yr | Fully resolved |
 |---|---|---|---|---|
-| 1995-99 | 258 | 3.75 yr | 5.00 yr | 34.1% |
-| 2000-04 | 1,720 | 2.31 yr | 5.62 yr | 27.2% |
-| 2005-09 | 4,422 | 2.87 yr | **15.06 yr** | 21.6% |
-| 2010-14 | 4,441 | 3.44 yr | 7.01 yr | 22.2% |
-| 2015-19 | 8,927 | 3.87 yr | **undefined** | 13.8% |
-| 2020-24 | 15,862 | 2.56 yr | **undefined** | 1.6% |
+| 2000-04 | 1.49 yr | 1.48 yr | 2.07 yr | 2.31 yr |
+| 2005-09 | 1.39 yr | 1.66 yr | 2.59 yr | 2.87 yr |
+| 2010-14 | 1.81 yr | 1.95 yr | 3.24 yr | 3.44 yr |
 
-For the 2005-09 cohort the quoted figure is 2.87 years and the correct one is
-15.06, a **5.2x understatement**. For 2015 onward the Kaplan-Meier median is
-undefined because fewer than half of those cohorts will ever complete: there is
-no median wait when the modal outcome is never finishing. The naive statistic
-still returns a comfortable-looking number, which is precisely the problem.
+Read at the close of the entry window, the completed-only median ran
+**1.55x to 2.06x** below its eventual value. The 2020-24 cohort, read at the end
+of 2024, sits exactly there, and its 2.56 yr reads as a speed-up from the
+2015-19 cohort's 3.87 yr. That is the direction truncation pushes. A slowing
+queue measured this way can look like it is getting faster.
+
+**Prior art.** Berkeley Lab's own *Queued Up* report (2025 edition) presents
+durations computed over projects that reached each milestone, indexed mostly by
+the year projects came online, and does not use survival or competing-risks
+methods. Indexing by completion year avoids the truncation shown above but is
+still a statistic about completers. Nothing here suggests the report's figures
+are wrong; they answer a narrower question than the one usually asked of them.
+
+> **Retracted.** An earlier version of this README reported a "Kaplan-Meier
+> median" of 15.06 yr for the 2005-09 cohort and called the 2.87 yr completed-only
+> median a 5.2x understatement. That fit treated withdrawn projects as censored,
+> which estimates time to completion in a hypothetical queue where nobody
+> withdraws. Withdrawal is a competing risk, not censoring, so the 15.06 yr
+> figure described no real project. The corrected finding above replaces it. See
+> FINDINGS.md.
 
 ## Other findings
 
@@ -98,18 +131,21 @@ either direction.
 ## Method notes
 
 - **Cohort framing throughout.** Outcomes are never pooled across entry years.
-  A 2022 cohort has had three years to resolve and a 2010 cohort fifteen.
+  A 2022 cohort has had about two years to resolve and a 2010 cohort fourteen.
 - **Maturity filter.** Cohorts within 5 years of the record end are excluded
   from rate statistics. Without it, recent years show an apparent collapse in
   throughput that is entirely an artifact of insufficient elapsed time.
-- **Competing risks.** Withdrawal and completion are not independent censoring
-  events; a withdrawn project can never complete. Cumulative incidence is
-  computed against the shared at-risk pool rather than applying Kaplan-Meier to
-  one outcome while censoring the other, which would overstate completion.
+- **Withdrawal is a competing risk, not censoring.** A withdrawn project can
+  never complete. Cumulative incidence is computed as P(outcome) from status
+  times P(time by t | outcome) from the dated subset of that outcome, assuming
+  dates are missing at random within an outcome. Applying Kaplan-Meier to
+  completion while censoring withdrawals would estimate a queue with no
+  withdrawals; that is the error retracted above.
 
 ## Figures
 
-- `outputs/interconnection-analytics/survivorship_bias.png` naive vs corrected median
+- `outputs/interconnection-analytics/cohort_outcomes.png` lifetime outcome shares, no cohort reaches half
+- `outputs/interconnection-analytics/realtime_backtest.png` the completed-only median read before resolution
 - `outputs/interconnection-analytics/completion_trend.png` outcome shares by entry year
 - `outputs/interconnection-analytics/completion_by_resource.png` completion by resource
 - `outputs/interconnection-analytics/pjm_cumulative_incidence.png` PJM competing risks
@@ -117,10 +153,11 @@ either direction.
 
 ## Limitations
 
-1. Timing statistics rest on the 62.8% of rows with a usable terminal date.
-   Whether that subset is representative is not established; if projects with
-   recorded dates are systematically better-administered, durations here are
-   optimistic.
+1. Timing statistics rest on dated projects: about half of completions and of
+   withdrawals. The real-time backtest and the medians assume dates are missing
+   at random among completers. If projects with recorded dates are
+   systematically better-administered, durations here are optimistic. The
+   headline shares (34.1%, 38.4%) need no dates and do not depend on this.
 2. LBNL harmonizes heterogeneous RTO queue postings, so cross-region
    comparisons carry the residual of that harmonization.
 3. No study-cost data. The original plan called for cost-per-MW trends; those
@@ -136,6 +173,7 @@ either direction.
 interconnection-analytics/
   iqueue/
     ingest.py     LBNL and PJM loaders, canonical schema, coverage report
-    analysis.py   outcome resolution, Kaplan-Meier, competing risks, cohorts
+    analysis.py   outcome resolution, cohort outcomes, competing-risks
+                  incidence, real-time backtest
   run_analysis.py tables and figures
 ```

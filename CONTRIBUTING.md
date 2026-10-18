@@ -17,7 +17,7 @@ they are:
 |---|---|---|
 | Volt-var gives 2.64x on a voltage-limited feeder | `hosting-capacity-sim` | One archetype's value, at one inverter sizing (the Category B minimum, S/P = 1.1136). A sampled feeder population, or a realistic distribution of installed S/P, would both move it. An earlier version of this number was wrong; see FINDINGS.md, Retracted |
 | Load factor predicts demand-charge impact at r = -0.59 | `tariff-explorer` | Five archetypes is not a sample. The correlation is driven by which five were picked |
-| The 5.2x survivorship ratio | `interconnection-analytics` | Rests on the 62.8% of rows with a usable terminal date. If those differ systematically from the rest, the ratio moves |
+| The 1.55x to 2.06x real-time truncation of the completed-only median | `interconnection-analytics` | Backtested on three resolved cohorts, using dated completions (about half of all completions). If dated and undated completions differ in duration, the range moves. An earlier version of this claim was wrong; see FINDINGS.md, Retracted |
 
 Finish line: a script under `tools/` that recomputes the claim a different way
 and either corroborates it or does not, plus a line in FINDINGS.md.

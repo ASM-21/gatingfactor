@@ -1,28 +1,38 @@
-"""Queue outcome analysis, with censoring handled explicitly.
+"""Queue outcome analysis, with the competing-risks structure handled explicitly.
 
-The central hazard in this dataset is that **the obvious statistic is wrong**.
+The central hazard in this dataset is that **the obvious statistic answers a
+different question than the one people ask of it.**
 
 "Median time to interconnect" computed over completed projects is conditioned
-on success: it can only see projects that finished, and a project that entered
-the queue in 2021 and is still waiting contributes nothing. When queues get
-slower, slow projects stay unfinished and drop out of the sample, so the
-measured median gets *faster*. The bias runs opposite to the trend.
+on success. It describes the projects that finished. A developer entering the
+queue wants to know how long *their* project will wait, and in this dataset no
+cohort has ever had even half its requests reach operation, so that wait has no
+median at all. The completed-only median is a statistic about a minority.
 
-Two corrections are applied throughout:
+It also has a second, mechanical problem when read in real time. A cohort that
+entered recently has only had time to produce its fast completions; its slow
+ones are still in the queue. So a completed-only median read before the cohort
+resolves is right-truncated, and reads low. ``realtime_backtest`` measures how
+low by re-reading fully resolved cohorts at earlier record end dates.
+
+Three rules are applied throughout:
 
 1. **Cohort framing.** Outcomes are reported by the year a project entered the
-   queue, never pooled across entry years. A 2022 cohort has had three years to
-   resolve and a 2010 cohort has had fifteen, so pooling them is meaningless.
+   queue, never pooled across entry years. A 2022 cohort has had two years to
+   resolve and a 2010 cohort fourteen, so pooling them is meaningless.
 
-2. **Kaplan-Meier survival.** For time-to-outcome, every project contributes
-   the time it was actually observed. Projects still active at the end of the
-   record are right-censored rather than dropped, which uses their information
-   without pretending to know when they will finish.
+2. **Withdrawal is a competing risk, not censoring.** A project that withdraws
+   can never complete. Treating withdrawal as ordinary censoring, as a plain
+   Kaplan-Meier fit on time-to-completion does, estimates time-to-completion in
+   a hypothetical queue where nobody withdraws. That quantity describes no real
+   project. An earlier version of this module made exactly that error in its
+   headline function while this docstring warned against it; see the retraction
+   in FINDINGS.md.
 
-Withdrawal and completion are **competing risks**: a project that withdraws can
-never complete. Treating withdrawal as ordinary censoring would overstate the
-completion rate, so cumulative incidence is computed for each outcome against
-the shared at-risk pool.
+3. **Outcome shares come from status; timing comes from dates.** Status has
+   complete coverage. Dates do not: about half of withdrawals and of
+   completions carry no terminal date. Rate statistics therefore use every row,
+   and timing statistics state the subset they rest on.
 
 ``maturity_cutoff`` exists because recent cohorts are not yet informative. A
 cohort needs several years before its completion rate means anything, and the
@@ -128,28 +138,40 @@ def kaplan_meier(durations: np.ndarray, events: np.ndarray) -> pd.DataFrame:
 def cumulative_incidence(
     df: pd.DataFrame, outcome: str, horizon_years: float = 10.0, steps: int = 60
 ) -> pd.DataFrame:
-    """Probability of a given outcome by time t, treating the other as a competing risk.
+    """Probability a project has reached ``outcome`` by time t, under competing risks.
 
-    This is not 1 minus Kaplan-Meier survival. With competing risks, KM applied
-    to one outcome while censoring the other overstates it, because it assumes
-    withdrawn projects could still have completed.
+    Decomposed as
+
+        CIF_k(t) = P(outcome = k) * P(T <= t | outcome = k)
+
+    The first factor comes from status, which has complete coverage. The second
+    comes from the dated projects with outcome k, under the stated assumption
+    that a terminal date is missing at random *within* an outcome. That
+    assumption is needed because about half of withdrawals and of completions
+    carry no date, and it is weaker than the alternatives: dropping undated
+    rows distorts the outcome mix, and keeping them in the denominator with no
+    way into the numerator (an earlier version of this function) understates
+    incidence by roughly half.
+
+    This is not 1 minus Kaplan-Meier survival. Applying Kaplan-Meier to one
+    outcome while censoring the other assumes withdrawn projects could still
+    have completed.
+
+    Use on resolved cohorts (``mature_cohorts``). For a cohort still largely in
+    the queue, P(outcome = k) is not yet final and the curve reads low.
     """
-    t = df.duration_years.to_numpy()
-    obs = df.outcome.to_numpy()
-    # Denominator is the full cohort, including projects whose terminal date is
-    # unknown. Those can never appear in the numerator, so this is a lower
-    # bound on incidence and is stated as such.
-    grid = np.linspace(0, horizon_years, steps)
     n = len(df)
-    t = np.nan_to_num(t, nan=np.inf)
+    grid = np.linspace(0, horizon_years, steps)
+    if n == 0:
+        return pd.DataFrame({"time_years": grid, "cumulative_incidence": np.nan})
+
+    share = float((df.outcome == outcome).mean())
+    dated = df.loc[(df.outcome == outcome) & df.timing_known, "duration_years"].to_numpy()
     rows = []
     for horizon in grid:
-        resolved = (t <= horizon) & (obs == outcome)
+        conditional = float((dated <= horizon).mean()) if len(dated) else 0.0
         rows.append(
-            {
-                "time_years": float(horizon),
-                "cumulative_incidence": float(resolved.sum() / n) if n else np.nan,
-            }
+            {"time_years": float(horizon), "cumulative_incidence": share * conditional}
         )
     return pd.DataFrame(rows)
 
@@ -172,49 +194,93 @@ def completion_rates(
     return out.reset_index()
 
 
-def naive_vs_survival_duration(df: pd.DataFrame) -> pd.DataFrame:
-    """Quantify the survivorship bias in the usual time-to-interconnect statistic.
+def cohort_outcomes(df: pd.DataFrame) -> pd.DataFrame:
+    """Lifetime outcome shares and the completed-only median, by 5-year entry cohort.
 
-    ``naive_median_years`` is what a straightforward groupby over completed
-    projects gives, and it is the number most often quoted.
+    ``completion_rate`` is the share of the cohort whose status is operational.
+    It needs no dates, so it covers every row. For resolved cohorts it is the
+    whole story about the median wait: if it is below 0.5, no median time to
+    completion exists for a project entering that cohort, because most of them
+    never complete.
 
-    ``completion_prob_5yr`` and ``completion_prob_10yr`` come from the
-    competing-risks cumulative incidence over the whole cohort, so they include
-    projects that withdrew or are still waiting.
-
-    ``km_median_years`` is usually **NaN by construction**, and that is the
-    finding rather than a failure: when a cohort's lifetime completion
-    probability is below 50%, the median time to completion does not exist. The
-    naive median still returns a number because it silently conditions on the
-    minority that finished.
+    ``naive_median_years`` is the median entry-to-operation duration over the
+    dated completions, which is the statistic usually quoted. It is a fair
+    description of the completers in a resolved cohort. It is not a description
+    of the wait facing a new entrant, and for unresolved cohorts it is also
+    right-truncated; see ``realtime_backtest``.
     """
     rows = []
     for cohort, group in df.groupby(df.queue_year // 5 * 5):
         completed = group[group.outcome == "operational"].duration_years.dropna()
         if len(completed) < 10:
             continue
-        timed = group[group.timing_known]
-        km = kaplan_meier(
-            timed.duration_years.to_numpy(),
-            (timed.outcome == "operational").astype(int).to_numpy(),
-        )
-        below = km[km.survival <= 0.5]
-        km_median = float(below.time_years.iloc[0]) if len(below) else np.nan
         inc = cumulative_incidence(group, "operational", horizon_years=10.0, steps=41)
         rows.append(
             {
                 "cohort_start": int(cohort),
                 "n_projects": int(len(group)),
-                "n_completed": int(len(completed)),
+                "n_completed_dated": int(len(completed)),
+                "completion_rate": float((group.outcome == "operational").mean()),
+                "withdrawal_rate": float((group.outcome == "withdrawn").mean()),
+                "still_open_rate": float(group.outcome.isin(["active", "suspended"]).mean()),
                 "naive_median_years": float(completed.median()),
-                "km_median_years": km_median,
                 "completion_prob_5yr": float(
                     inc.loc[inc.time_years.sub(5).abs().idxmin(), "cumulative_incidence"]
                 ),
                 "completion_prob_10yr": float(inc.cumulative_incidence.iloc[-1]),
-                "completion_rate": float((group.outcome == "operational").mean()),
             }
         )
+    return pd.DataFrame(rows)
+
+
+BACKTEST_COHORTS = (2000, 2005, 2010)
+BACKTEST_OFFSETS = (0, 1, 3, 5, 10)
+
+
+def realtime_backtest(
+    df: pd.DataFrame,
+    cohorts: tuple[int, ...] = BACKTEST_COHORTS,
+    offsets: tuple[int, ...] = BACKTEST_OFFSETS,
+    record_end: pd.Timestamp = RECORD_END,
+) -> pd.DataFrame:
+    """How low the completed-only median reads before a cohort has resolved.
+
+    For each fully resolved 5-year cohort, the completed-only median is
+    recomputed as it would have been reported at an earlier record end:
+    ``offset`` years after the cohort's last entry year closed. Comparing that
+    to the full-record median measures right-truncation directly, with no
+    modeling assumption beyond the dates themselves.
+
+    Offset 0 is the analog of reading the most recent cohort in the record
+    today. The 2020-24 cohort, read at the end of 2024, sits exactly there.
+
+    Only cohorts that have had at least 10 years to resolve are eligible, so the
+    full-record median is itself close to final.
+    """
+    op = df[(df.outcome == "operational") & df.actual_cod_date.notna() & df.duration_years.notna()]
+    cohort_of = op.queue_year // 5 * 5
+    rows = []
+    for cohort in cohorts:
+        if cohort + 4 + 10 > record_end.year:
+            raise ValueError(f"cohort {cohort} has not had 10 years to resolve; not a valid backtest")
+        group = op[cohort_of == cohort]
+        full = float(group.duration_years.median())
+        for offset in offsets:
+            cut = pd.Timestamp(f"{cohort + 4 + offset}-12-31")
+            seen = group[group.actual_cod_date <= cut]
+            as_reported = float(seen.duration_years.median()) if len(seen) else np.nan
+            rows.append(
+                {
+                    "cohort_start": int(cohort),
+                    "years_after_close": int(offset),
+                    "report_date": cut.date().isoformat(),
+                    "n_completed_seen": int(len(seen)),
+                    "n_completed_total": int(len(group)),
+                    "median_as_reported": as_reported,
+                    "median_full_record": full,
+                    "understatement": full / as_reported if as_reported else np.nan,
+                }
+            )
     return pd.DataFrame(rows)
 
 

@@ -85,26 +85,53 @@ def _json(track: str, name: str) -> dict:
 
 
 # track 1
-def t1_max_survivorship_ratio() -> float:
-    b = _parquet("interconnection-analytics", "survivorship_bias")
-    r = b.dropna(subset=["km_median_years"])
-    return float((r.km_median_years / r.naive_median_years).max())
+def _cohorts() -> pd.DataFrame:
+    return _parquet("interconnection-analytics", "cohort_outcomes")
+
+
+def _pre2020() -> pd.DataFrame:
+    c = _cohorts()
+    return c[c.cohort_start < 2020]
+
+
+def t1_max_completion_pre2020() -> float:
+    """Highest lifetime completion share of any cohort entering 1995-2019."""
+    return float(100 * _pre2020().completion_rate.max())
+
+
+def t1_max_completion_ceiling_pre2020() -> float:
+    """The most any pre-2020 cohort could finish at if every open project completed."""
+    c = _pre2020()
+    return float(100 * (c.completion_rate + c.still_open_rate).max())
 
 
 def t1_2005_naive() -> float:
-    b = _parquet("interconnection-analytics", "survivorship_bias")
-    return float(b.loc[b.cohort_start == 2005, "naive_median_years"].iloc[0])
+    c = _cohorts()
+    return float(c.loc[c.cohort_start == 2005, "naive_median_years"].iloc[0])
 
 
-def t1_2005_km() -> float:
-    b = _parquet("interconnection-analytics", "survivorship_bias")
-    return float(b.loc[b.cohort_start == 2005, "km_median_years"].iloc[0])
+def t1_2020_naive() -> float:
+    c = _cohorts()
+    return float(c.loc[c.cohort_start == 2020, "naive_median_years"].iloc[0])
 
 
-def t1_undefined_cohorts() -> float:
-    """Cohorts where the KM median does not exist because under half complete."""
-    b = _parquet("interconnection-analytics", "survivorship_bias")
-    return float(b.km_median_years.isna().sum())
+def _backtest_offset0() -> pd.Series:
+    b = _parquet("interconnection-analytics", "realtime_backtest")
+    return b.loc[b.years_after_close == 0, "understatement"]
+
+
+def t1_backtest_min() -> float:
+    return float(_backtest_offset0().min())
+
+
+def t1_backtest_max() -> float:
+    return float(_backtest_offset0().max())
+
+
+def t1_withdrawn_dated_share() -> float:
+    r = _parquet("interconnection-analytics", "resolved")
+    wd = r[r.outcome == "withdrawn"]
+    return float(100 * wd.withdrawal_date.notna().mean())
 
 
 def t1_pjm_withdrawal() -> float:
@@ -348,17 +375,26 @@ R_FIND = "FINDINGS.md"
 
 CLAIMS: list[Claim] = [
     # --- track 1 ---
-    Claim(R_T1, "5.2x", t1_max_survivorship_ratio, 5.244, 0.05),
+    Claim(R_T1, "34.1%", t1_max_completion_pre2020, 34.11, 0.05),
+    Claim(R_T1, "38.4%", t1_max_completion_ceiling_pre2020, 38.37, 0.05),
+    Claim(R_T1, "1.55x to 2.06x", t1_backtest_min, 1.550, 0.005),
+    Claim(R_T1, "1.55x to 2.06x", t1_backtest_max, 2.061, 0.005),
     Claim(R_T1, "2.87 yr", t1_2005_naive, 2.872, 0.01),
-    Claim(R_T1, "15.06 yr", t1_2005_km, 15.061, 0.01),
+    Claim(R_T1, "2.56 yr", t1_2020_naive, 2.563, 0.01),
+    Claim(R_T1, "48.3%", t1_withdrawn_dated_share, 48.33, 0.05),
     Claim(R_T1, "36,441", t1_n_requests, 36441, 0.0),
     Claim(R_T1, "68.0%", t1_pjm_withdrawal, 67.97, 0.05),
     Claim(R_T1, "23.8%", t1_pjm_completion, 23.79, 0.05),
     Claim(R_T1, "470 requests", t1_ppl_projects, 470, 0.0),
     Claim(R_T1, "67.7%", t1_ppl_withdrawal, 67.66, 0.05),
     Claim(R_T1, "15.5%", t1_ppl_completion, 15.53, 0.05),
-    Claim(R_FIND, "5.2x", t1_max_survivorship_ratio, 5.244, 0.05),
-    Claim(R_ROOT, "5.2x", t1_max_survivorship_ratio, 5.244, 0.05),
+    Claim(R_FIND, "34.1%", t1_max_completion_pre2020, 34.11, 0.05),
+    Claim(R_FIND, "38.4%", t1_max_completion_ceiling_pre2020, 38.37, 0.05),
+    Claim(R_FIND, "1.55x to 2.06x", t1_backtest_min, 1.550, 0.005),
+    Claim(R_FIND, "1.55x to 2.06x", t1_backtest_max, 2.061, 0.005),
+    Claim(R_ROOT, "34.1%", t1_max_completion_pre2020, 34.11, 0.05),
+    Claim(R_ROOT, "1.55x to 2.06x", t1_backtest_min, 1.550, 0.005),
+    Claim(R_ROOT, "1.55x to 2.06x", t1_backtest_max, 2.061, 0.005),
     # --- track 2 ---
     Claim(R_T2, "5.7x", t2_rural_ratio, 5.66, 0.05),
     Claim(R_T2, "17.1x", t2_urban_ratio, 17.11, 0.05),
@@ -426,6 +462,15 @@ REQUIRED_TEXT: list[tuple[str, str, str]] = [
     (R_T2, "Category B minimum", "volt-var figures are meaningless without their sizing"),
     (R_FIND, "Track 2: volt-var gives 2.41x", "retraction of the track 2 volt-var figure"),
     (R_FIND, "Track 6: the average carbon signal", "retraction of the track 6 signal claim"),
+    (R_FIND, "Track 1: the Kaplan-Meier median", "retraction of the track 1 survival headline"),
+    (R_T1, "competing risk", "withdrawal must stay framed as a competing risk, not censoring"),
+    # Prior art. A finding that corroborates must not drift into reading as a discovery.
+    (R_FIND, "Alternatives to the 15% Rule", "track 2 prior art: Sandia 16-feeder study"),
+    (R_T2, "Alternatives to the 15% Rule", "track 2 prior art: Sandia 16-feeder study"),
+    (R_FIND, "does not use survival or competing-risks methods", "track 1 prior art: LBNL report method"),
+    (R_T1, "does not use survival or competing-risks methods", "track 1 prior art: LBNL report method"),
+    (R_FIND, "Darghouth", "track 3 prior art: demand charge savings replication"),
+    (R_FIND, "Jiang, Huber, Ferris", "track 6 prior art: average-signal load shifting"),
     (R_T6, "regression estimate", "track 6 marginal factors are estimated, not measured"),
     (R_T1, "conditioned on success", "the survivorship mechanism must stay stated"),
     (R_T1, "Berkeley Lab", "LBNL data attribution"),

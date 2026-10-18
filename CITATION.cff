@@ -15,10 +15,12 @@ abstract: >-
   Four independent empirical studies of distributed energy resource value in
   PJM and the wider US grid, converging on a single structural finding: what
   gates a DER project is the context it sits in, not the sophistication of the
-  control layered on top. Track 1 shows the standard time-to-interconnect
-  statistic understates the real wait by up to 5.2x because it is conditioned
-  on success, using Kaplan-Meier survival analysis over 36,441 Berkeley Lab
-  Queued Up interconnection requests. Track 2 shows the FERC SGIP Fast Track
+  control layered on top. Track 1 shows, over 36,441 Berkeley Lab Queued Up
+  interconnection requests, that no cohort entering from 1995 through 2019 has
+  had more than 34.1% of its requests reach operation, so there is no median
+  wait for an entrant and the quoted time-to-interconnect median describes the
+  completers; read before a cohort resolves, that median is also truncated
+  1.55x to 2.06x low. Track 2 shows the FERC SGIP Fast Track
   15%-of-peak-load screen binds 5.7x to 17.1x below the voltage and thermal
   limit on synthetic distribution feeders modeled in pandapower. Track 3 shows
   that at equal revenue within customer class, the same rooftop solar customer

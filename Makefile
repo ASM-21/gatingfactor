@@ -1,7 +1,7 @@
 .PHONY: help test claims verify queue hosting carbon tariff dashboard report clean
 
 help:
-	@echo "make test       run the full test suite (147 tests)"
+	@echo "make test       run the full test suite (155 tests)"
 	@echo "make claims     verify every quoted figure recomputes from results"
 	@echo "make verify     test + claims, what CI runs"
 	@echo "make report     regenerate every figure and table"

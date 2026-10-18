@@ -91,19 +91,19 @@ def test_guard_passes_on_sandbox(sandbox: Path):
 def test_catches_a_changed_figure(sandbox: Path):
     """Edit a number in the prose without rerunning the pipeline."""
     readme = sandbox / "interconnection-analytics" / "README.md"
-    inject(readme, "15.06 yr", "9.99 yr")
+    inject(readme, "1.55x to 2.06x", "1.20x to 1.30x")
     result = run_guard(sandbox)
     assert result.returncode == 1
-    assert "15.06 yr" in result.stdout
+    assert "1.55x to 2.06x" in result.stdout
 
 
 def test_catches_drifted_results(sandbox: Path):
     """Change the results without updating the prose. The other direction."""
     import pandas as pd
 
-    path = sandbox / "data" / "processed" / "interconnection-analytics" / "survivorship_bias.parquet"
+    path = sandbox / "data" / "processed" / "interconnection-analytics" / "cohort_outcomes.parquet"
     df = pd.read_parquet(path)
-    df.loc[df.cohort_start == 2005, "km_median_years"] = 3.0
+    df.loc[df.cohort_start == 1995, "completion_rate"] = 0.9
     df.to_parquet(path, index=False)
     result = run_guard(sandbox)
     assert result.returncode == 1
@@ -262,3 +262,12 @@ def test_catches_private_key_block(private_sandbox: Path):
     result = run_private_guard(private_sandbox)
     assert result.returncode == 1
     assert "private key" in result.stdout.lower()
+
+
+def test_catches_deleted_track1_retraction(sandbox: Path):
+    """The track 1 retraction must stay visible, like the other two."""
+    findings = sandbox / "FINDINGS.md"
+    inject(findings, "Track 1: the Kaplan-Meier median", "Track 1: a note")
+    result = run_guard(sandbox)
+    assert result.returncode == 1
+    assert "retraction of the track 1" in result.stdout

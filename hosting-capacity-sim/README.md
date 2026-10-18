@@ -32,7 +32,7 @@ Five screens are evaluated, deliberately kept in three separate categories.
 | `thermal` | physical | 100% of ampacity | Conductor rating |
 | `reverse_power` | operational | net export at substation | Station-level backfeed, a study trigger for relay coordination and LTC control |
 | `penetration_15` | paper | 15% of line section peak load | The classic FERC SGIP Fast Track penetration screen |
-| `min_daytime` | paper | 100% of minimum daytime load | The Supplemental Review penetration test |
+| `min_daytime` | paper | 100% of minimum daytime load | The Supplemental Review penetration test, added to the SGIP by FERC Order No. 792 (2013) |
 
 **The headline hosting capacity number is voltage and thermal only.** That
 matches how published utility hosting capacity maps define the term, and the
@@ -75,10 +75,22 @@ All at 12.47 kV, substation bus held at 1.02 pu.
 
 The gap widens as the feeder gets stiffer, which is the opposite of what you
 would want from a screen: the 15% rule is most conservative exactly where the
-circuit can most easily absorb DER. This is a known criticism of the screen in
-the literature, and it reproduces cleanly here. The screen is doing its job as
-a cheap conservative filter, but a project that fails it is not close to a real
-limit on any of these three feeders.
+circuit can most easily absorb DER. That the screen is conservative is
+established: Sandia's *Alternatives to the 15% Rule* (2015) modeled hosting
+capacity on 16 real utility feeders, and a companion Sandia study extended the
+statistical analysis to 216, as groundwork for replacing the screen. It
+reproduces cleanly here. The screen is doing its job as a cheap conservative
+filter, but a project that fails it is not close to a real limit on any of
+these three feeders.
+
+Read the "stiffer" part with care. The three archetypes bundle line length,
+conductor size and load together, and peak load also sits in the screen's
+denominator by construction, so three points cannot separate those effects. A
+companion audit by the same author sampled a continuous feeder parameter space
+instead: the direction held in every sampled feeder and strengthened once load
+was controlled, "stiffer" turned out to mean mostly "shorter", and the three
+archetypes understated the spread of the ratio by several times. The direction
+here is supported; the specific multiples are illustrative.
 
 **2. Which screen binds is a property of the archetype, not the penetration.**
 

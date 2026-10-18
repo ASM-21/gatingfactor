@@ -181,24 +181,91 @@ def test_maturity_filter_drops_recent_cohorts(resolved):
 # --- the headline finding ---------------------------------------------------
 
 
-def test_naive_median_understates_true_wait(resolved):
-    """The core result. Where a KM median exists, it must exceed the naive one."""
-    bias = an.naive_vs_survival_duration(resolved)
-    both = bias.dropna(subset=["km_median_years"])
-    assert len(both) >= 3
-    assert (both.km_median_years > both.naive_median_years).all()
+def test_no_pre2020_cohort_reaches_half_completion(resolved):
+    """The core result, and it needs no dates: status covers every row."""
+    cohorts = an.cohort_outcomes(resolved)
+    pre2020 = cohorts[cohorts.cohort_start < 2020]
+    assert len(pre2020) >= 5
+    assert (pre2020.completion_rate < 0.5).all()
 
 
-def test_km_median_undefined_for_low_completion_cohorts(resolved):
-    """When under half a cohort ever completes, the median does not exist.
+def test_no_pre2020_cohort_can_reach_half(resolved):
+    """Even if every project still waiting completed. The robust upper bound."""
+    cohorts = an.cohort_outcomes(resolved)
+    pre2020 = cohorts[cohorts.cohort_start < 2020]
+    ceiling = pre2020.completion_rate + pre2020.still_open_rate
+    assert (ceiling < 0.5).all()
 
-    The naive statistic still returns a number, which is exactly the problem.
+
+def test_completed_only_median_still_returns_a_number(resolved):
+    """The statistic people quote exists even where no median wait does."""
+    cohorts = an.cohort_outcomes(resolved)
+    assert cohorts.naive_median_years.notna().all()
+
+
+def test_cohort_shares_partition(resolved):
+    cohorts = an.cohort_outcomes(resolved)
+    total = cohorts.completion_rate + cohorts.withdrawal_rate + cohorts.still_open_rate
+    assert np.allclose(total, 1.0, atol=1e-9)
+
+
+def test_realtime_median_reads_low_before_resolution(resolved):
+    """Right-truncation: read at the close of the entry window, it reads low."""
+    bt = an.realtime_backtest(resolved)
+    at_close = bt[bt.years_after_close == 0]
+    assert len(at_close) == len(an.BACKTEST_COHORTS)
+    assert (at_close.understatement > 1.4).all()
+
+
+def test_realtime_median_converges_as_window_extends(resolved):
+    """The truncation must shrink as the cohort resolves, or it is not truncation."""
+    bt = an.realtime_backtest(resolved)
+    for _, g in bt.groupby("cohort_start"):
+        g = g.sort_values("years_after_close")
+        assert g.n_completed_seen.is_monotonic_increasing
+        assert g.understatement.iloc[-1] < 1.05
+        assert g.understatement.iloc[-1] < g.understatement.iloc[0]
+
+
+def test_backtest_refuses_unresolved_cohort(resolved):
+    """A cohort without 10 years to resolve has no trustworthy full-record median."""
+    with pytest.raises(ValueError):
+        an.realtime_backtest(resolved, cohorts=(2015,))
+
+
+def test_cumulative_incidence_approaches_lifetime_share(resolved):
+    """CIF must end near the status-based share for a resolved cohort.
+
+    An earlier version kept undated outcomes in the denominator with no way into
+    the numerator, and ended at roughly half the true share.
     """
-    bias = an.naive_vs_survival_duration(resolved)
-    undefined = bias[bias.km_median_years.isna()]
-    assert len(undefined) >= 1
-    assert (undefined.completion_rate < 0.5).all()
-    assert undefined.naive_median_years.notna().all()
+    cohort = resolved[(resolved.queue_year // 5 * 5) == 2005]
+    share = (cohort.outcome == "operational").mean()
+    cif = an.cumulative_incidence(cohort, "operational", horizon_years=19.0, steps=20)
+    end = cif.cumulative_incidence.iloc[-1]
+    assert end <= share + 1e-12
+    assert end > 0.95 * share
+
+
+def test_retracted_km_median_came_from_censoring_withdrawals(resolved):
+    """Pins the retraction in FINDINGS.md so it cannot quietly drift.
+
+    The retracted headline was a Kaplan-Meier fit on time-to-completion with
+    withdrawn projects treated as censored. This reproduces its 15.06 yr figure
+    for the 2005-09 cohort, then shows the competing-risks view: completion
+    probability never reaches one half, so no median exists at all.
+    """
+    cohort = resolved[(resolved.queue_year // 5 * 5) == 2005]
+    timed = cohort[cohort.timing_known]
+    events = (timed.outcome == "operational").astype(int).to_numpy()
+    assert (timed.outcome == "withdrawn").sum() > 1000  # all treated as censored
+
+    km = an.kaplan_meier(timed.duration_years.to_numpy(), events)
+    retracted = float(km[km.survival <= 0.5].time_years.iloc[0])
+    assert retracted == pytest.approx(15.06, abs=0.01)
+
+    cif = an.cumulative_incidence(cohort, "operational", horizon_years=19.0, steps=40)
+    assert cif.cumulative_incidence.max() < 0.5
 
 
 def test_withdrawal_is_the_modal_outcome(resolved):

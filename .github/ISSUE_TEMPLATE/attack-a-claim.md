@@ -20,7 +20,8 @@ likely to be wrong. If you are looking for somewhere to start:
    at one inverter sizing. An earlier version of it was already wrong once.
 2. The r = -0.59 load factor correlation (`tariff-explorer`) rests on five
    hand-picked archetypes.
-3. The 5.2x survivorship ratio (`interconnection-analytics`) rests on the 62.8%
-   of rows that carry a usable terminal date.
+3. The 1.55x to 2.06x real-time truncation (`interconnection-analytics`) rests
+   on three backtested cohorts and on the dated half of completions. An earlier
+   version of this claim was also wrong once.
 
 See CONTRIBUTING.md for finish lines on each.

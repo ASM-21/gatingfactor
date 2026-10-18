@@ -27,29 +27,63 @@ SUBTITLE = (
     "gatingfactor / interconnection-analytics. Berkeley Lab Queued Up 2025 release "
     "(36,441 requests through 2024). Cohorts within 5 years of the record end are excluded."
 )
+SUBTITLE_ALL_COHORTS = (
+    "gatingfactor / interconnection-analytics. Berkeley Lab Queued Up 2025 release "
+    "(36,441 requests through 2024). All cohorts shown; shares from status, which covers every row."
+)
+SUBTITLE_BACKTEST = (
+    "gatingfactor / interconnection-analytics. Berkeley Lab Queued Up 2025 release. "
+    "Fully resolved cohorts re-read at earlier record end dates; dated completions only."
+)
 
 
-def fig_survivorship(bias: pd.DataFrame) -> Path:
-    """The headline: the quoted median is a fraction of the real one."""
+def fig_cohort_outcomes(cohorts: pd.DataFrame) -> Path:
+    """No cohort ever gets half its requests to operation."""
     fig, ax = plt.subplots(figsize=(10, 6))
-    x = np.arange(len(bias))
-    width = 0.38
-    ax.bar(x - width / 2, bias.naive_median_years, width,
-           label="naive median (completed projects only)")
-    km = bias.km_median_years.fillna(0)
-    ax.bar(x + width / 2, km, width, label="Kaplan-Meier median (all projects)",
-           color=plotting.PALETTE[2])
-    for i, (val, raw) in enumerate(zip(km, bias.km_median_years)):
-        if np.isnan(raw):
-            ax.text(i + width / 2, 0.4, "undefined\n(<50% ever\ncomplete)",
-                    ha="center", fontsize=8, color=plotting.COLOR_VIOLATION)
+    x = np.arange(len(cohorts))
+    completed = 100 * cohorts.completion_rate
+    withdrawn = 100 * cohorts.withdrawal_rate
+    still_open = 100 * cohorts.still_open_rate
+    ax.bar(x, completed, label="reached operation", color=plotting.PALETTE[0])
+    ax.bar(x, withdrawn, bottom=completed, label="withdrew", color=plotting.COLOR_VIOLATION)
+    ax.bar(x, still_open, bottom=completed + withdrawn, label="still in the queue",
+           color=plotting.COLOR_NEUTRAL)
+    ax.axhline(50, color="black", lw=1, ls="--")
+    ax.text(len(cohorts) - 0.45, 51.5, "half the cohort", ha="right", fontsize=9)
+    for i, (c, med) in enumerate(zip(completed, cohorts.naive_median_years)):
+        label = f"{c:.0f}%\nmedian of\ncompleters\n{med:.1f} yr"
+        # Small bars cannot hold the label; set it just above, on the red segment.
+        y, va = (c / 2, "center") if c >= 10 else (c + 1.5, "bottom")
+        ax.text(i, y, label, ha="center", va=va, fontsize=7.5, color="white")
     ax.set_xticks(x)
-    ax.set_xticklabels([f"{int(c)}-{int(c)+4}" for c in bias.cohort_start])
+    ax.set_xticklabels([f"{int(c)}-{int(c)+4}" for c in cohorts.cohort_start])
     ax.set_xlabel("Queue entry cohort")
-    ax.set_ylabel("Median years to interconnection")
-    ax.set_title("The usual time-to-interconnect statistic understates the wait by up to 5x")
+    ax.set_ylabel("Share of cohort (%)")
+    ax.set_ylim(0, 112)
+    ax.set_yticks(range(0, 101, 20))
+    ax.set_title("No cohort has had half its requests reach operation")
+    ax.legend(loc="upper center", ncol=3, frameon=False)
+    return plotting.finish(fig, paths.output(TRACK, "cohort_outcomes.png"), SUBTITLE_ALL_COHORTS)
+
+
+def fig_realtime_backtest(backtest: pd.DataFrame) -> Path:
+    """The completed-only median, as it would have read before each cohort resolved."""
+    fig, ax = plt.subplots(figsize=(10, 6))
+    for i, (cohort, g) in enumerate(backtest.groupby("cohort_start")):
+        color = plotting.PALETTE[i]
+        ax.plot(g.years_after_close, g.median_as_reported, "-o", color=color,
+                label=f"{cohort}-{cohort + 4} cohort")
+        ax.axhline(g.median_full_record.iloc[0], color=color, ls=":", lw=1)
+        first = g.iloc[0]
+        ax.annotate(f"{first.understatement:.2f}x low", (first.years_after_close, first.median_as_reported),
+                    xytext=(8, -14), textcoords="offset points", fontsize=8, color=color)
+    ax.set_xlabel("Years after the cohort's last entry year when the median is read")
+    ax.set_ylabel("Median years to operation, completed projects only")
+    ax.set_title("Read before a cohort resolves, the completed-only median is truncated low")
     ax.legend()
-    return plotting.finish(fig, paths.output(TRACK, "survivorship_bias.png"), SUBTITLE)
+    ax.text(0.99, 0.02, "dotted lines: value once the cohort has fully resolved",
+            transform=ax.transAxes, ha="right", fontsize=8, color=plotting.COLOR_NEUTRAL)
+    return plotting.finish(fig, paths.output(TRACK, "realtime_backtest.png"), SUBTITLE_BACKTEST)
 
 
 def fig_completion_trend(rates: pd.DataFrame) -> Path:
@@ -130,11 +164,17 @@ def main() -> None:
     print(f"    outcomes: {resolved.outcome.value_counts().to_dict()}")
     print(f"    timing known for {100 * resolved.timing_known.mean():.1f}% of rows")
 
-    print("\n[survivorship] naive vs Kaplan-Meier")
-    bias = an.naive_vs_survival_duration(resolved)
-    io.write_processed(bias, TRACK, "survivorship_bias")
-    bias.to_csv(paths.output(TRACK, "survivorship_bias.csv"), index=False)
-    print(bias.round(2).to_string(index=False))
+    print("\n[cohort outcomes] lifetime shares and the completed-only median")
+    cohorts = an.cohort_outcomes(resolved)
+    io.write_processed(cohorts, TRACK, "cohort_outcomes")
+    cohorts.to_csv(paths.output(TRACK, "cohort_outcomes.csv"), index=False)
+    print(cohorts.round(3).to_string(index=False))
+
+    print("\n[real-time backtest] completed-only median read before resolution")
+    backtest = an.realtime_backtest(resolved)
+    io.write_processed(backtest, TRACK, "realtime_backtest")
+    backtest.to_csv(paths.output(TRACK, "realtime_backtest.csv"), index=False)
+    print(backtest.round(3).to_string(index=False))
 
     print("\n[cohorts]")
     rates = an.completion_rates(resolved)
@@ -170,7 +210,8 @@ def main() -> None:
 
     print("\n[figures]")
     for p in (
-        fig_survivorship(bias),
+        fig_cohort_outcomes(cohorts),
+        fig_realtime_backtest(backtest),
         fig_completion_trend(rates),
         fig_resource(resources),
         fig_incidence(resolved),

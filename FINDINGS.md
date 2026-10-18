@@ -53,29 +53,39 @@ These bound every number below. They are stated once here rather than repeated.
 
 ---
 
-## 1. The standard time-to-interconnect statistic understates the wait
+## 1. There is no median wait, and the quoted median describes the completers
 
-**Claim.** Median time-to-interconnect computed over completed projects
-understates the true wait by up to **5.2x**, and for recent cohorts the
-statistic does not exist at all.
+**Claim.** No cohort entering the queue from 1995 through 2019 has had more
+than **34.1%** of its requests reach operation, and none can reach half: if
+every project still waiting completed, the highest any of those cohorts could
+finish at is **38.4%**. So there is no median time to interconnect for a project
+entering the queue. The median that gets quoted is computed over completed
+projects and describes that minority.
 
-**Mechanism.** Computing a median over projects that reached operation is
-conditioned on success. A project that entered in 2015 and is still waiting
-contributes nothing. When queues slow, slow projects stay unfinished and leave
-the sample, so the measured median gets *faster*. The bias runs opposite to the
-trend it is meant to measure.
+**Second mechanism.** Read before a cohort resolves, the completed-only median
+is also right-truncated, because only the fast completions have happened yet.
+Re-reading three fully resolved cohorts at earlier record end dates, the median
+read at the close of the entry window ran **1.55x to 2.06x** below its eventual
+value. The 2020-24 cohort is read at exactly that point today, and its median
+reads as a speed-up from the previous cohort. Truncation pushes in that
+direction, so a slowing queue measured this way can look like it is speeding up.
 
-**Evidence.** Kaplan-Meier with right-censoring, over 36,441 LBNL requests.
-The 2005-09 cohort: naive median **2.87 yr**, corrected **15.06 yr**. For the
-2015-19 and 2020-24 cohorts the KM median is undefined, because under half of
-each cohort will ever complete.
+**Evidence.** 36,441 LBNL Queued Up requests. Outcome shares come from status,
+which covers every row. The backtest uses dated completions only.
 
-**Falsified if.** A cohort is found where the KM median is both defined and
-below the naive median, or where the completion-conditioned sample is shown to
-be representative of the full cohort.
+**Prior art.** Berkeley Lab's *Queued Up* report (2025 edition) presents
+durations over projects that reached each milestone, indexed mostly by the year
+projects came online, and does not use survival or competing-risks methods.
+Indexing by completion year avoids the truncation above but still describes
+completers. The report's figures are not wrong; they answer a narrower question
+than the one usually asked of them.
 
-**Code.** `interconnection-analytics/iqueue/analysis.py`,
-`naive_vs_survival_duration()`.
+**Falsified if.** A pre-2020 cohort is found whose eventual completion share
+exceeds one half, or the backtest is shown to depend on which completions carry
+dates.
+
+**Code.** `interconnection-analytics/iqueue/analysis.py`, `cohort_outcomes()`
+and `realtime_backtest()`.
 
 ---
 
@@ -104,10 +114,18 @@ below the voltage and thermal limit, and the gap *widens* on stiffer feeders.
 can most easily absorb DER. Failing it routes an application from Fast Track
 into Supplemental Review; it does not mean the interconnection is infeasible.
 
-**Known weakness.** Three archetypes are not a population, and a sibling audit
-repo that sampled a continuous feeder parameter space found the direction held
-but the magnitude range was roughly 4x wider than three points suggested. Treat
-the direction as supported and the specific multiples as illustrative.
+**Known weakness.** Three archetypes are not a population, and they bundle line
+length, conductor and load, with peak load also in the screen's denominator. A
+companion audit by the same author sampled a continuous feeder parameter space:
+the direction held in every sampled feeder and strengthened once load was
+controlled, "stiffer" turned out to mean mostly "shorter", and the magnitude
+range was several times wider than three points suggested. Treat the direction
+as supported and the specific multiples as illustrative.
+
+**Prior art.** That the screen is conservative is established. Sandia's
+*Alternatives to the 15% Rule: Modeling and Hosting Capacity Analysis of 16
+Feeders* (2015) and its 216-feeder statistical follow-up were groundwork for
+replacing it. This finding corroborates rather than discovers.
 
 **Falsified if.** A feeder is found where the 15% screen binds at or above the
 voltage/thermal limit.
@@ -249,18 +267,36 @@ Category B minimum, 2.64x, happens to be larger, because a compliant inverter
 has more var headroom than the old model allowed. The sign of the finding
 survived; the provenance of the number did not.
 
-Both retractions share a cause worth naming: prose described a property the
-code did not have, and nothing checked one against the other. That is the
-failure `tools/check_claims.py` exists to prevent for figures, and the
-apparent-power test in `tests/test_hosting_capacity.py` now prevents for this
-constraint.
+**3. Track 1: the Kaplan-Meier median.** An earlier version reported a
+"Kaplan-Meier median" of 15.06 yr for the 2005-09 cohort and called the 2.87 yr
+completed-only median a 5.2x understatement of the true wait. The fit treated
+1,408 withdrawn projects in that cohort as censored, which estimates time to
+completion in a hypothetical queue where nobody withdraws. Withdrawal is a
+competing risk: a withdrawn project can never complete, and projects that
+withdraw are not a random draw from those that would eventually have finished.
+The 15.06 yr figure described no real project. The module's own docstring
+warned against exactly this while its headline function did it. Finding 1 is
+the replacement: the honest real-time understatement is 1.55x to 2.06x, and the
+deeper point is that most projects never finish at all. The same audit found a
+mislabeled figure: "27.8% of withdrawn projects carry a withdrawal date" was
+the share of all rows; the share of withdrawn projects is 48.3%.
+
+All three retractions share a cause worth naming: prose described a property the
+code did not have, and nothing checked one against the other. In track 1 the
+prose was the module's own docstring. That is the failure `tools/check_claims.py`
+exists to prevent for figures. For the two modeling constraints, a test now
+pins each: the apparent-power test in `tests/test_hosting_capacity.py`, and a
+test in `tests/test_interconnection_analytics.py` that reproduces the retracted
+15.06 yr figure, asserts it came from censoring withdrawals, and asserts that
+treating withdrawal as a competing risk leaves no median at all.
 
 ---
 
 ## What would change my mind
 
-- Track 1: evidence that projects with recorded terminal dates (62.8% of rows)
-  differ systematically from those without.
+- Track 1: a pre-2020 cohort whose eventual completion share exceeds one half,
+  or evidence that dated completions (about half of all completions) differ
+  systematically in duration from undated ones, which would move the backtest.
 - Track 2: a sampled feeder population, rather than three archetypes, showing
   the screen binding above the physical limit.
 - Track 3: real metered load shapes replacing the synthetic archetypes, and a
