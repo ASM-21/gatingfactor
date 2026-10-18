@@ -169,6 +169,56 @@ def t2_urban_vv() -> float:
     return _vv_uplift("urban")
 
 
+def _sizing() -> pd.DataFrame:
+    return _parquet("hosting-capacity-sim", "inverter_sizing")
+
+
+def t2_max_uplift_at_exact_sizing() -> float:
+    """At S/P = 1.00 volt-var must be exactly inert on every feeder."""
+    z = _sizing()
+    z = z[np.isclose(z.inverter_oversize, 1.0)]
+    return float(z.uplift.abs().max())
+
+
+def t2_min_uplift_at_exact_sizing() -> float:
+    z = _sizing()
+    z = z[np.isclose(z.inverter_oversize, 1.0)]
+    return float(z.uplift.min())
+
+
+def t2_suburban_uplift_at_1_02() -> float:
+    z = _sizing()
+    row = z[(z.feeder == "suburban") & np.isclose(z.inverter_oversize, 1.02)]
+    return float(row.uplift.iloc[0])
+
+
+def t2_category_b_min_oversize() -> float:
+    z = _sizing()
+    return float(z[z.is_category_b_min].inverter_oversize.iloc[0])
+
+
+def t2_sizing_matches_results() -> float:
+    """The sizing stage and results stage must agree at the Category B point.
+
+    They ran with different tolerances once and reported 1.255x and 1.243x for
+    the same configuration. Returns the worst disagreement, which must be ~0.
+    """
+    z = _sizing()
+    z = z[z.is_category_b_min].set_index("feeder").uplift
+    worst = 0.0
+    for feeder in z.index:
+        worst = max(worst, abs(z[feeder] - _vv_uplift(feeder)))
+    return float(worst)
+
+
+def t2_inverter_overshoot() -> float:
+    """How far any inverter at any hosting capacity limit exceeds its kVA rating.
+
+    Must be exactly zero. The retracted volt-var result had this at 0.024.
+    """
+    return float(max(0.0, _sizing().max_s_utilization.max() - 1.0))
+
+
 def t2_rural_siting_spread() -> float:
     h = _parquet("hosting-capacity-sim", "hosting_capacity_results")
     s = h[(h.feeder == "rural") & (~h.volt_var)]
@@ -312,8 +362,21 @@ CLAIMS: list[Claim] = [
     # --- track 2 ---
     Claim(R_T2, "5.7x", t2_rural_ratio, 5.66, 0.05),
     Claim(R_T2, "17.1x", t2_urban_ratio, 17.11, 0.05),
-    Claim(R_T2, "2.41x", t2_suburban_vv, 2.411, 0.01),
-    Claim(R_T2, "0.99x", t2_urban_vv, 0.990, 0.01),
+    Claim(R_T2, "2.64x", t2_suburban_vv, 2.635, 0.01),
+    Claim(R_T2, "0.99x", t2_urban_vv, 0.989, 0.01),
+    Claim(R_T2, "exactly 1.00x", t2_max_uplift_at_exact_sizing, 1.0, 1e-9),
+    Claim(R_T2, "exactly 1.00x", t2_min_uplift_at_exact_sizing, 1.0, 1e-9),
+    Claim(R_T2, "2.30x", t2_suburban_uplift_at_1_02, 2.301, 0.01),
+    Claim(R_T2, "1.1136", t2_category_b_min_oversize, 1.11359, 1e-4),
+    Claim(R_T2, "2.64x", t2_sizing_matches_results, 0.0, 1e-6),
+    Claim(R_T2, "no inverter ever exceeds its rating", t2_inverter_overshoot, 0.0, 1e-9),
+    Claim(R_FIND, "2.64x", t2_suburban_vv, 2.635, 0.01),
+    Claim(R_FIND, "0.99x", t2_urban_vv, 0.989, 0.01),
+    Claim(R_FIND, "1.00x", t2_max_uplift_at_exact_sizing, 1.0, 1e-9),
+    Claim(R_FIND, "2.30x", t2_suburban_uplift_at_1_02, 2.301, 0.01),
+    Claim(R_ROOT, "2.64x", t2_suburban_vv, 2.635, 0.01),
+    Claim(R_ROOT, "0.99x", t2_urban_vv, 0.989, 0.01),
+    Claim(R_ROOT, "1.00x", t2_max_uplift_at_exact_sizing, 1.0, 1e-9),
     Claim(R_T2, "3.35x", t2_rural_siting_spread, 3.349, 0.01),
     Claim(R_FIND, "17.1x", t2_urban_ratio, 17.11, 0.05),
     Claim(R_ROOT, "17.1x", t2_urban_ratio, 17.11, 0.05),
@@ -359,6 +422,10 @@ REQUIRED_TEXT: list[tuple[str, str, str]] = [
     (R_T3, "Synthetic", "track 3 load shapes are synthetic, not measured"),
     (R_T3, "not filed tariffs", "track 3 rate levels are representative, not filed"),
     (R_T2, "not calibrated to any real circuit", "track 2 feeders are synthetic"),
+    (R_T2, "never enforced that constraint", "track 2 volt-var correction must stay visible"),
+    (R_T2, "Category B minimum", "volt-var figures are meaningless without their sizing"),
+    (R_FIND, "Track 2: volt-var gives 2.41x", "retraction of the track 2 volt-var figure"),
+    (R_FIND, "Track 6: the average carbon signal", "retraction of the track 6 signal claim"),
     (R_T6, "regression estimate", "track 6 marginal factors are estimated, not measured"),
     (R_T1, "conditioned on success", "the survivorship mechanism must stay stated"),
     (R_T1, "Berkeley Lab", "LBNL data attribution"),

@@ -88,19 +88,41 @@ trigger is not the first thing to trip. That distinction drives what the fix
 costs: a voltage-limited feeder can often be addressed with inverter settings
 or a regulator, while a thermal-limited one needs reconductoring.
 
-**3. Volt-var control helps a great deal, but only where voltage binds.**
+**3. Volt-var helps only where voltage binds, and only if the inverter has
+headroom.**
 
-| Feeder | Volt-var off | Volt-var on | Uplift | Base binding screen |
+With inverters sized at the Category B minimum (S/P = 1.1136, defined below):
+
+| Feeder | Volt-var off | Volt-var on | Uplift | Binding screen, off -> on |
 |---|---|---|---|---|
-| rural | 0.87 MW | 1.06 MW | 1.21x | voltage |
-| suburban | 6.02 MW | 14.52 MW | 2.41x | voltage |
-| urban | 16.94 MW | 16.77 MW | 0.99x | thermal |
+| rural | 0.87 MW | 1.08 MW | 1.24x | voltage -> voltage |
+| suburban | 6.02 MW | 15.86 MW | 2.64x | voltage -> thermal |
+| urban | 16.94 MW | 16.76 MW | 0.99x | thermal -> thermal |
 
-The suburban 2.4x uplift is the headline case for requiring IEEE 1547-2018
-Category B settings. The urban feeder gets nothing, and in fact very slightly
-less, because absorbing vars to push voltage down adds current on a circuit
-that was already current-limited. Volt-var is not free on a thermally
-constrained feeder.
+The conditional structure is the robust part. Where voltage binds, volt-var
+raises hosting capacity; where current binds, it very slightly lowers it,
+because absorbing vars to pull voltage down adds current on a circuit that was
+already current-limited. On the suburban feeder volt-var buys enough voltage
+headroom that the binding screen flips to thermal, which is why the uplift
+stops there.
+
+**The uplift is a cliff in inverter sizing, not a slope.** At S/P = 1.00, an
+inverter running at full real output has no reactive headroom, and volt-var
+gives exactly 1.00x on all three feeders. Two percent of oversizing recovers
+most of the benefit (suburban 2.30x at S/P = 1.02), and it saturates by about
+S/P = 1.06 once the thermal limit takes over. See
+`outputs/hosting-capacity-sim/inverter_sizing.png`.
+
+> **Correction.** An earlier version of this README reported a 2.41x suburban
+> uplift with `inverter_oversize=1.0`, and described that setting as the
+> conservative case in which vars compete with real power headroom. The code
+> never enforced that constraint. At the reported hosting capacity all 20
+> inverters were running up to 2.4% over their kVA rating, and the uplift came
+> from that violation: enforced correctly, S/P = 1.00 gives exactly 1.00x.
+> `volt_var.solve` now clips reactive output to sqrt(S^2 - P^2), and a test
+> asserts no inverter ever exceeds its rating. The corrected number at the
+> Category B minimum happens to be larger, 2.64x, because a compliant inverter
+> has more var headroom than the old model's 44% of real power.
 
 **4. Siting matters more than anything else on a weak feeder.**
 
@@ -115,6 +137,7 @@ scales with feeder impedance.
 - `outputs/hosting-capacity-sim/nodal_hosting_capacity.png` capacity vs distance from substation
 - `outputs/hosting-capacity-sim/voltage_rise_sweep.png` voltage rise vs penetration
 - `outputs/hosting-capacity-sim/siting_strategy.png` siting strategy comparison
+- `outputs/hosting-capacity-sim/inverter_sizing.png` volt-var uplift vs inverter S/P
 
 ## Modeling assumptions
 
@@ -130,10 +153,14 @@ Stated here rather than buried, because every one of them moves the answer:
 4. **Static snapshot at minimum daytime load**, not an 8760 quasi-static
    time series. A full QSTS run would catch tap-changer and capacitor
    interactions this misses.
-5. **Inverter apparent power equals real power rating** by default
-   (`inverter_oversize=1.0`), so volt-var reactive output competes with real
-   output headroom. Real installations often oversize by 10% or so, which would
-   improve the volt-var numbers above.
+5. **Inverters sized at the Category B minimum, S/P = 1.1136, with real power
+   priority.** Category B requires 44% of nameplate kVA as var capability.
+   Delivering that at rated real power needs P^2 + (0.44 S)^2 <= S^2, so
+   S/P >= 1/sqrt(1 - 0.44^2) = 1.1136. That is arithmetic from the capability
+   table, not an empirical assumption. Reactive output is always clipped to the
+   headroom sqrt(S^2 - P^2). Because the result depends so sharply on this
+   choice near S/P = 1, every result row records its `inverter_oversize`, and
+   the `sizing` stage reports the full sensitivity.
 6. **Bisection assumes monotonicity** of the pass/fail boundary in DER size.
    `verify_monotonic()` brute-force checks this rather than assuming it, and it
    passes for all three archetypes.
@@ -145,7 +172,8 @@ hosting-capacity-sim/
   hcsim/
     feeders.py           archetype construction, conductor library
     screens.py           screen definitions and the three-way taxonomy
-    volt_var.py          IEEE 1547-2018 Category B curve, damped fixed point
+    volt_var.py          IEEE 1547-2018 Category B curve, apparent-power limit,
+                         damped fixed point
     hosting_capacity.py  bisection search, nodal maps, sweeps
   run_analysis.py        staged, resumable pipeline
 ```

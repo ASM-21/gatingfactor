@@ -39,6 +39,9 @@ class CapacityResult:
     feeder: str
     strategy: str
     volt_var: bool
+    # Inverter kVA / rated kW. Only meaningful when volt_var is True, but always
+    # recorded so a result row can never be read without its sizing assumption.
+    inverter_oversize: float
     # Headline: limited by voltage and thermal only.
     hosting_capacity_mw: float
     binding_screen: str
@@ -94,9 +97,11 @@ class FeederProbe:
         use_volt_var: bool = False,
         load_scale: float | None = None,
         buses: list[int] | None = None,
+        inverter_oversize: float = volt_var.CATEGORY_B_MIN_OVERSIZE,
     ) -> None:
         self.spec = feeders.SPECS[spec] if isinstance(spec, str) else spec
         self.use_volt_var = use_volt_var
+        self.inverter_oversize = inverter_oversize
         self.load_scale = (
             self.spec.min_daytime_load_frac if load_scale is None else load_scale
         )
@@ -108,7 +113,11 @@ class FeederProbe:
         """Solve at a given penetration and score every screen. None if diverged."""
         place_der(self.net, allocate(self.buses, total_mw, strategy))
         try:
-            volt_var.solve(self.net, enabled=self.use_volt_var)
+            volt_var.solve(
+                self.net,
+                enabled=self.use_volt_var,
+                inverter_oversize=self.inverter_oversize,
+            )
         except pp.LoadflowNotConverged:
             return None
         return screens.evaluate(
@@ -126,6 +135,7 @@ def evaluate_penetration(
     use_volt_var: bool = False,
     load_scale: float | None = None,
     buses: list[int] | None = None,
+    inverter_oversize: float = volt_var.CATEGORY_B_MIN_OVERSIZE,
 ):
     """One-shot evaluation at a single penetration.
 
@@ -133,7 +143,13 @@ def evaluate_penetration(
     point. Use FeederProbe directly for sweeps and searches, since it reuses
     the built network instead of reconstructing it per call.
     """
-    probe = FeederProbe(spec, use_volt_var=use_volt_var, load_scale=load_scale, buses=buses)
+    probe = FeederProbe(
+        spec,
+        use_volt_var=use_volt_var,
+        load_scale=load_scale,
+        buses=buses,
+        inverter_oversize=inverter_oversize,
+    )
     return probe.evaluate(total_mw, strategy)
 
 
@@ -166,12 +182,15 @@ def search(
     upper_mw: float = 60.0,
     tol_mw: float = 0.01,
     buses: list[int] | None = None,
+    inverter_oversize: float = volt_var.CATEGORY_B_MIN_OVERSIZE,
 ) -> CapacityResult:
     """Find the limiting DER MW for every screen on one feeder configuration."""
     if isinstance(spec, str):
         spec = feeders.SPECS[spec]
 
-    probe = FeederProbe(spec, use_volt_var=use_volt_var, buses=buses)
+    probe = FeederProbe(
+        spec, use_volt_var=use_volt_var, buses=buses, inverter_oversize=inverter_oversize
+    )
 
     limits = {
         name: _limit_for(probe, strategy, name, upper_mw, tol_mw)
@@ -192,6 +211,7 @@ def search(
         feeder=spec.name,
         strategy=strategy,
         volt_var=use_volt_var,
+        inverter_oversize=round(inverter_oversize, 5),
         hosting_capacity_mw=round(headline, 3),
         binding_screen=binding,
         limit_voltage_mw=round(limits["voltage"], 3),
@@ -213,6 +233,7 @@ def nodal_map(
     use_volt_var: bool = False,
     upper_mw: float = 60.0,
     tol_mw: float = 0.02,
+    inverter_oversize: float = volt_var.CATEGORY_B_MIN_OVERSIZE,
 ) -> dict[int, float]:
     """Per-bus hosting capacity: max MW sited at that single bus alone.
 
@@ -224,7 +245,9 @@ def nodal_map(
     scaffold = feeders.build(spec, load_scale=spec.min_daytime_load_frac)
     out: dict[int, float] = {}
     for bus in feeders.load_buses(scaffold):
-        probe = FeederProbe(spec, use_volt_var=use_volt_var, buses=[bus])
+        probe = FeederProbe(
+            spec, use_volt_var=use_volt_var, buses=[bus], inverter_oversize=inverter_oversize
+        )
         v = _limit_for(probe, "distributed", "voltage", upper_mw, tol_mw)
         t = _limit_for(probe, "distributed", "thermal", upper_mw, tol_mw)
         out[bus] = round(min(v, t), 3)
@@ -260,11 +283,12 @@ def sweep(
     use_volt_var: bool = False,
     upper_mw: float = 6.0,
     steps: int = 60,
+    inverter_oversize: float = volt_var.CATEGORY_B_MIN_OVERSIZE,
 ):
     """Penetration sweep returning voltage, loading, and substation flow traces."""
     if isinstance(spec, str):
         spec = feeders.SPECS[spec]
-    probe = FeederProbe(spec, use_volt_var=use_volt_var)
+    probe = FeederProbe(spec, use_volt_var=use_volt_var, inverter_oversize=inverter_oversize)
     rows = []
     for mw in np.linspace(0.0, upper_mw, steps):
         res = probe.evaluate(float(mw), strategy)

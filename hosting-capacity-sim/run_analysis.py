@@ -1,9 +1,13 @@
 """Regenerate every hosting-capacity-sim artifact.
 
-    python run_analysis.py            # full run
-    python run_analysis.py --quick    # coarser tolerance, skips nodal maps
+    python run_analysis.py                    # every stage
+    python run_analysis.py --stage results    # one stage at a time
+    python run_analysis.py --stage nodal --feeder rural
+    python run_analysis.py --quick            # coarser bisection tolerance
 
-Outputs land in data/processed/hosting-capacity-sim/ and outputs/hosting-capacity-sim/.
+Stages: results, sweeps, nodal, sizing, figures, verify. Each caches to parquet,
+so they are resumable. Outputs land in data/processed/hosting-capacity-sim/ and
+outputs/hosting-capacity-sim/.
 """
 
 from __future__ import annotations
@@ -22,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import matplotlib.pyplot as plt  # noqa: E402
 import pandas as pd  # noqa: E402
 
-from hcsim import feeders, hosting_capacity as hc  # noqa: E402
+from hcsim import feeders, hosting_capacity as hc, volt_var  # noqa: E402
 from shared import io, paths, plotting  # noqa: E402
 
 TRACK = "hosting-capacity-sim"
@@ -174,12 +178,76 @@ def fig_strategy(results: pd.DataFrame) -> Path:
     return plotting.finish(fig, paths.output(TRACK, "siting_strategy.png"), SUBTITLE)
 
 
+# Inverter kVA / rated kW. 1.00 is an inverter sized exactly to its real output;
+# CATEGORY_B_MIN_OVERSIZE (1.1136) is the smallest sizing that delivers the full
+# Category B var capability at rated real power.
+SIZING_GRID = (1.00, 1.02, 1.04, 1.06, 1.08, 1.10, volt_var.CATEGORY_B_MIN_OVERSIZE, 1.15, 1.20)
+
+
+def build_sizing(tol_mw: float = 0.01) -> pd.DataFrame:
+    """Volt-var uplift as a function of inverter sizing, distributed siting.
+
+    This stage exists because the volt-var result is meaningless without its
+    sizing assumption. An earlier version of this module reported an uplift
+    without enforcing the inverter's apparent-power limit at all.
+    """
+    rows = []
+    for feeder_name in feeders.SPECS:
+        base = hc.search(feeder_name, "distributed", use_volt_var=False, tol_mw=tol_mw)
+        for k in SIZING_GRID:
+            t0 = time.time()
+            res = hc.search(
+                feeder_name, "distributed", use_volt_var=True, tol_mw=tol_mw, inverter_oversize=k
+            )
+            probe = hc.FeederProbe(feeder_name, use_volt_var=True, inverter_oversize=k)
+            probe.evaluate(res.hosting_capacity_mw, "distributed")
+            rows.append(
+                {
+                    "feeder": feeder_name,
+                    "inverter_oversize": round(k, 5),
+                    "is_category_b_min": abs(k - volt_var.CATEGORY_B_MIN_OVERSIZE) < 1e-9,
+                    "base_hosting_capacity_mw": base.hosting_capacity_mw,
+                    "base_binding_screen": base.binding_screen,
+                    "vv_hosting_capacity_mw": res.hosting_capacity_mw,
+                    "vv_binding_screen": res.binding_screen,
+                    "uplift": res.hosting_capacity_mw / base.hosting_capacity_mw,
+                    "max_s_utilization": volt_var.s_utilization(probe.net, k),
+                }
+            )
+            print(
+                f"  {feeder_name:9s} S/P={k:.4f}  uplift={rows[-1]['uplift']:.3f}x  "
+                f"binds={res.binding_screen:<8s} ({time.time() - t0:.1f}s)",
+                flush=True,
+            )
+    return pd.DataFrame(rows)
+
+
+def fig_sizing(sizing: pd.DataFrame) -> Path:
+    fig, ax = plt.subplots(figsize=(10, 6))
+    for feeder_name in feeders.SPECS:
+        sub = sizing[sizing.feeder == feeder_name].sort_values("inverter_oversize")
+        ax.plot(sub.inverter_oversize, sub.uplift, "-o", ms=4, label=feeder_name)
+    ax.axhline(1.0, color=plotting.COLOR_NEUTRAL, lw=1)
+    ax.axvline(volt_var.CATEGORY_B_MIN_OVERSIZE, color=plotting.COLOR_VIOLATION, lw=1.2, ls=":")
+    # Axis-fraction y so the label sits between the curves, not on one.
+    ax.text(
+        volt_var.CATEGORY_B_MIN_OVERSIZE + 0.003, 0.5,
+        "Category B minimum\nS/P = 1.1136", fontsize=8, va="center",
+        color=plotting.COLOR_VIOLATION, transform=ax.get_xaxis_transform(),
+    )
+    ax.set_xlabel("Inverter sizing, S/P (kVA rating / rated kW)")
+    ax.set_ylabel("Hosting capacity with volt-var / without")
+    ax.set_title("Volt-var uplift is entirely contingent on inverter sizing")
+    ax.legend()
+    return plotting.finish(fig, paths.output(TRACK, "inverter_sizing.png"), SUBTITLE)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument(
         "--stage",
         default="all",
-        choices=("all", "results", "sweeps", "nodal", "figures", "verify"),
+        choices=("all", "results", "sweeps", "nodal", "sizing", "figures", "verify"),
         help="run one stage; each caches to parquet so stages are resumable",
     )
     ap.add_argument("--feeder", default=None, help="restrict the nodal stage to one feeder")
@@ -213,6 +281,12 @@ def main() -> None:
         io.write_processed(nodal, TRACK, "nodal_hosting_capacity")
         nodal.to_csv(paths.output(TRACK, "nodal_hosting_capacity.csv"), index=False)
 
+    if stage in ("all", "sizing"):
+        print("[sizing] volt-var uplift vs inverter S/P")
+        sizing = build_sizing()
+        io.write_processed(sizing, TRACK, "inverter_sizing")
+        sizing.to_csv(paths.output(TRACK, "inverter_sizing.csv"), index=False)
+
     if stage in ("all", "figures"):
         print("[figures]")
         results = io.read_processed(TRACK, "hosting_capacity_results")
@@ -222,6 +296,10 @@ def main() -> None:
             made.append(fig_nodal(io.read_processed(TRACK, "nodal_hosting_capacity")))
         except FileNotFoundError:
             print("    (nodal map not built yet, skipping that figure)")
+        try:
+            made.append(fig_sizing(io.read_processed(TRACK, "inverter_sizing")))
+        except FileNotFoundError:
+            print("    (sizing sensitivity not built yet, skipping that figure)")
         for p in made:
             print("   ", p.relative_to(paths.REPO_ROOT))
 

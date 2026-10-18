@@ -15,7 +15,7 @@ they are:
 
 | Claim | Where | Why it is shaky |
 |---|---|---|
-| Volt-var gives 2.41x on a voltage-limited feeder | `hosting-capacity-sim` | One archetype's value reported as if typical. A sampled population would likely show a much lower median |
+| Volt-var gives 2.64x on a voltage-limited feeder | `hosting-capacity-sim` | One archetype's value, at one inverter sizing (the Category B minimum, S/P = 1.1136). A sampled feeder population, or a realistic distribution of installed S/P, would both move it. An earlier version of this number was wrong; see FINDINGS.md, Retracted |
 | Load factor predicts demand-charge impact at r = -0.59 | `tariff-explorer` | Five archetypes is not a sample. The correlation is driven by which five were picked |
 | The 5.2x survivorship ratio | `interconnection-analytics` | Rests on the 62.8% of rows with a usable terminal date. If those differ systematically from the rest, the ratio moves |
 

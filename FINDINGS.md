@@ -116,21 +116,35 @@ voltage/thermal limit.
 
 ---
 
-## 4. Volt-var control helps only where voltage binds
+## 4. Volt-var helps only where voltage binds, and only with inverter headroom
 
-**Claim.** IEEE 1547-2018 Category B volt-var gives **2.41x** hosting capacity
-on the voltage-limited suburban feeder and **0.99x** on the thermally-limited
-urban one, where it very slightly *hurts*.
+**Claim.** With inverters sized at the Category B minimum (S/P = 1.1136),
+IEEE 1547-2018 Category B volt-var gives **2.64x** hosting capacity on the
+voltage-limited suburban feeder and **0.99x** on the thermally-limited urban
+one, where it very slightly *hurts*. At S/P = 1.00 it gives exactly **1.00x**
+on every feeder.
 
-**Mechanism.** Absorbing reactive power to pull voltage down adds current to a
-circuit that was already current-limited. Volt-var is not free on a thermally
-constrained feeder.
+**Mechanism.** Two separate ones. First, absorbing reactive power to pull
+voltage down adds current, so on a circuit that is already current-limited
+volt-var costs capacity. Second, an inverter producing P kW from an S kVA
+rating has only sqrt(S^2 - P^2) of reactive headroom; sized at S = P and
+running at full output, it has none. The uplift is a cliff in sizing, not a
+slope: 2% of oversizing recovers most of it (suburban **2.30x** at
+S/P = 1.02), and it saturates once the thermal limit binds.
 
-**Known weakness.** The 2.41x figure is one archetype's value, not a typical
-one. The conditional structure (voltage-limited gains, thermal-limited does
-not) is the robust part of this finding; the multiple is not.
+**Scope.** S/P = 1.1136 is the arithmetic minimum for delivering the full
+Category B 44% var capability at rated real power, not a measured fleet
+average. Any volt-var uplift quoted without its inverter sizing is
+uninterpretable, which is why every result row records it.
 
-**Code.** `hosting-capacity-sim/hcsim/volt_var.py`.
+**Known weakness.** Three archetypes are not a population. The conditional
+structure is the robust part; the specific multiples are one feeder's values.
+
+**Falsified if.** A voltage-limited feeder loses hosting capacity under
+volt-var with headroom available, or a thermally-limited one gains it.
+
+**Code.** `hosting-capacity-sim/hcsim/volt_var.py`; sizing sensitivity in
+`hosting-capacity-sim/run_analysis.py --stage sizing`.
 
 ---
 
@@ -214,14 +228,32 @@ units contradicts the overnight peak.
 
 ## Retracted
 
-**An earlier version of this repository claimed that using average rather than
-marginal carbon intensity was "conservative" and that track 6's conclusion was
-"robust" to the choice.** That was wrong. The two signals are anti-correlated
-in PJM, so the average signal does not understate the achievable saving, it
-points the controller in the wrong direction. The claim was corrected in place
-rather than quietly deleted, and finding 7 above is the replacement. This block
-is the only place in the repository where a superseded claim is stated, and the
-claim guard permits scope-reversing language here and nowhere else.
+Every superseded claim in the repository is listed here, and each is also
+corrected in place where it originally appeared, rather than quietly deleted.
+
+**1. Track 6: the average carbon signal is "conservative".** An earlier version
+claimed that using average rather than marginal carbon intensity was
+"conservative" and that track 6's conclusion was "robust" to the choice. That
+was wrong. The two signals are anti-correlated in PJM, so the average signal
+does not understate the achievable saving, it points the controller in the
+wrong direction. Finding 7 is the replacement.
+
+**2. Track 2: volt-var gives 2.41x.** An earlier version reported a 2.41x
+suburban uplift with inverters sized at S/P = 1.00, and described that setting
+as the conservative case in which vars compete with real power headroom. The
+code documented that constraint but never enforced it. At the reported hosting
+capacity, all 20 inverters were running up to 2.4% over their kVA rating, and
+the uplift came from that violation; enforced correctly, S/P = 1.00 gives
+exactly 1.00x. Finding 4 is the replacement. The corrected figure at the
+Category B minimum, 2.64x, happens to be larger, because a compliant inverter
+has more var headroom than the old model allowed. The sign of the finding
+survived; the provenance of the number did not.
+
+Both retractions share a cause worth naming: prose described a property the
+code did not have, and nothing checked one against the other. That is the
+failure `tools/check_claims.py` exists to prevent for figures, and the
+apparent-power test in `tests/test_hosting_capacity.py` now prevents for this
+constraint.
 
 ---
 
